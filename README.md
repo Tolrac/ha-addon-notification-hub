@@ -1,5 +1,7 @@
 # Centre de notifications – application Home Assistant
 
+[![Ajouter ce dépôt à Home Assistant](https://my.home-assistant.io/badges/supervisor_add_addon_repository.svg)](https://my.home-assistant.io/redirect/supervisor_add_addon_repository/?repository_url=https%3A%2F%2Fgithub.com%2Ftolrac%2Fha-addon-notification-hub)
+
 Envoie les bonnes notifications aux bonnes personnes, au bon moment, et pour la bonne durée.
 Inspiré du « Notifier » de la vidéo [« Les notifications sur Home Assistant, c'est compliqué ? »](https://www.youtube.com/watch?v=chJylIK0ASo)
 (Horizon Domotique), réécrit comme une application Home Assistant autonome, sans AppDaemon.
