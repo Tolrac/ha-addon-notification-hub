@@ -1,0 +1,32 @@
+name: "Centre de notifications"
+version: "1.1.2"
+slug: notification_hub
+description: "Envoie les bonnes notifications aux bonnes personnes au bon moment : présence, proximité, mise en attente, remplacement et annulation."
+url: "https://github.com/tolrac/ha-addon-notification-hub"
+arch:
+  - aarch64
+  - amd64
+startup: application
+boot: auto
+ingress: true
+ingress_port: 8099
+ingress_entry: app
+panel_icon: mdi:bell-ring-outline
+panel_title: "Notifications"
+panel_admin: true
+homeassistant_api: true
+options:
+  proximity_threshold: 200
+  extra_home_zones: []
+  occupancy_entity: ""
+  people_overrides: []
+  ttl_hours: 24
+schema:
+  proximity_threshold: int(0,5000)
+  extra_home_zones:
+    - str
+  occupancy_entity: str?
+  people_overrides:
+    - person: str
+      notify: str
+  ttl_hours: int(1,168)

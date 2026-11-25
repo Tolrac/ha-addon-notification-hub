@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Centre de notifications</title>
+  <link rel="stylesheet" href="static/style.css?v=1.1.1">
+</head>
+<body>
+  <div class="app">
+    <header class="app-header">
+      <div class="header-logo" aria-hidden="true">
+        <svg viewBox="0 0 24 24" width="30" height="30" fill="none" stroke="#fff" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9a6 6 0 0 1 12 0c0 6 2.5 7.5 2.5 7.5h-17S6 15 6 9z"/><path d="M10 20a2 2 0 0 0 4 0"/></svg>
+      </div>
+      <div class="header-text">
+        <h1 class="truncate">Centre de notifications</h1>
+        <p class="truncate">À qui, quand et combien de temps : présence, proximité, attente et annulation</p>
+      </div>
+      <div class="header-spacer"></div>
+      <span id="status-line" class="header-status truncate">Chargement…</span>
+      <button id="header-menu" class="header-actions" type="button" aria-label="Plus d'options">
+        <svg viewBox="0 0 24 24" width="24" height="24" fill="currentColor"><circle cx="12" cy="5" r="1.8"/><circle cx="12" cy="12" r="1.8"/><circle cx="12" cy="19" r="1.8"/></svg>
+      </button>
+    </header>
+
+    <div id="banner" class="banner hidden" role="alert"></div>
+
+    <div class="layout">
+      <section class="col" aria-label="Personnes">
+        <h2 class="section-title">Personnes</h2>
+        <div id="people" class="stack"></div>
+      </section>
+      <section class="col" aria-label="Notifications">
+        <div class="section-head">
+          <h2 class="section-title">Notifications</h2>
+          <button id="ai-create" class="btn-ghost hidden" type="button">✨ Créer l'automatisation (IA)</button>
+        </div>
+        <div id="notifs" class="stack"></div>
+      </section>
+    </div>
+
+    <div class="fab-container">
+      <button id="new-test" class="fab-btn" type="button">
+        <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
+        Envoyer un test
+      </button>
+    </div>
+
+    <div id="toast-zone"></div>
+  </div>
+
+  <aside id="drawer" class="drawer hidden" aria-label="Créer l'automatisation avec l'IA">
+    <div class="drawer-head">
+      <div class="drawer-title"><b>Créer l'automatisation (IA)</b><span class="muted">Automations IA, dans le Centre de notifications</span></div>
+      <button id="drawer-close" class="icon-btn" type="button" aria-label="Fermer">✕</button>
+    </div>
+    <iframe id="drawer-frame" title="Automations IA"></iframe>
+  </aside>
+  <div id="menu" class="menu hidden"></div>
+  <div id="dialog" class="dialog-back hidden"></div>
+  <script src="static/app.js?v=1.1.1"></script>
+</body>
+</html>
