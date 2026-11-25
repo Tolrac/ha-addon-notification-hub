@@ -91,7 +91,12 @@ function renderNotifs() {
     ];
     if (n.hold) meta.push("attend le retour");
     if (n.cancel_when.length) meta.push(`${n.cancel_when.length} condition(s) d'annulation`);
-    if (n.actions.length) meta.push("boutons : " + n.actions.join(", "));
+    const buttons = n.active && n.actions.length
+      ? `<div class="card-foot">${n.actions.map((a) => a.uri
+        ? `<button class="btn-ghost" data-uri="${esc(a.uri)}" type="button">${esc(a.title)} ↗</button>`
+        : `<button class="btn-ghost" data-act="${esc(n.id)}" data-key="${esc(a.key)}" type="button">${esc(a.title)}</button>`).join("")}</div>`
+      : "";
+    if (n.actions.length && !n.active) meta.push("boutons : " + n.actions.map((a) => a.title).join(", "));
     return `<div class="card">
       <div class="notif-head">
         <div class="notif-title">${esc(n.title)}</div>
@@ -104,6 +109,7 @@ function renderNotifs() {
       <div class="notif-msg">${esc(n.message)}</div>
       ${n.note ? `<div class="note">${esc(n.note)}</div>` : ""}
       <div class="notif-meta">${meta.map((m) => `<span>${esc(m)}</span>`).join("")}</div>
+      ${buttons}
       ${S.ai ? `<div class="card-foot"><button class="btn-ghost" data-auto="${esc(n.id)}" type="button">✨ Automatiser</button></div>` : ""}
     </div>`;
   }).join("");
@@ -134,6 +140,21 @@ $("#notifs").addEventListener("click", async (e) => {
   if (auto) {
     const n = (S.data?.notifications || []).find((x) => x.id === auto.dataset.auto);
     if (n) openAI(promptFor(n));
+    return;
+  }
+  const uri = e.target.closest("[data-uri]");
+  if (uri) {
+    window.open(uri.dataset.uri, "_blank", "noopener");
+    return;
+  }
+  const act = e.target.closest("[data-act]");
+  if (act) {
+    act.disabled = true;
+    try {
+      await api(`api/notification/${act.dataset.act}/action/${encodeURIComponent(act.dataset.key)}`, { method: "POST", body: "{}" });
+      toast("Action exécutée");
+    } catch (err) { toast(err.message, true); }
+    refresh();
     return;
   }
   const del = e.target.closest("[data-delete]");

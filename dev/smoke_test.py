@@ -8,6 +8,7 @@ import subprocess
 import sys
 import tempfile
 import time
+import urllib.error
 import urllib.request
 from pathlib import Path
 
@@ -22,6 +23,15 @@ def http(url, data=None, method=None):
     req.add_header("Content-Type", "application/json")
     with urllib.request.urlopen(req, timeout=10) as r:
         return json.loads(r.read() or b"{}")
+
+
+def http_status(url):
+    req = urllib.request.Request(url, data=b"{}", method="POST")
+    try:
+        with urllib.request.urlopen(req, timeout=10) as r:
+            return r.status
+    except urllib.error.HTTPError as err:
+        return err.code
 
 
 def state(eid, st, attrs=None):
@@ -156,6 +166,21 @@ def main():
         before = len(calls())
         http(HUB + "/api/clear", {"scope": "all"}); time.sleep(0.5)
         check("tout effacer : liste vide et téléphones effacés", notifs() == [] and len(calls()) > before, (len(notifs()), len(calls()) - before))
+
+        print("10. Bouton appuyé depuis l'interface")
+        http(HUB + "/api/clear", {"scope": "all"}); reset()
+        send(title="UI", message="m", target="all", tag="ui1", actions=[{"key": "off", "title": "Éteindre", "do": [{"action": "light.turn_off", "target": {"entity_id": "light.salon"}}]}, {"key": "cam", "title": "Caméra", "uri": "/cam"}])
+        n = notifs()[0]
+        check("la vue expose clé, titre et lien des boutons", [a["key"] for a in n["actions"]] == ["off", "cam"] and n["actions"][1]["uri"] == "/cam", n["actions"])
+        before = len(calls())
+        http(f"{HUB}/api/notification/{n['id']}/action/off", {}); time.sleep(0.6)
+        check("light.turn_off appelé et téléphones effacés", any(x["service"] == "turn_off" for x in calls("light")) and any(x["data"].get("message") == "clear_notification" for x in calls()[before:]))
+        check("statut « handled »", notifs()[0]["status"] == "handled", notifs()[0]["status"])
+        check("deuxième appui refusé", http_status(f"{HUB}/api/notification/{n['id']}/action/off") == 404)
+        reset(); send(title="UI2", message="m", target="all", tag="ui2", callback=[{"title": "Go", "event": "ui_event"}])
+        n = notifs()[0]
+        http(f"{HUB}/api/notification/{n['id']}/action/{n['actions'][0]['key']}", {}); time.sleep(0.6)
+        check("bouton événement : traitée", notifs()[0]["status"] == "handled", (notifs()[0]["status"], n["actions"]))
     finally:
         for p in procs:
             p.terminate()

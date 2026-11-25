@@ -584,25 +584,45 @@ class Hub:
                     if a and i["active"]:
                         item, action = i, a
                         break
-            if not item or not action:
+            if not item or not action or not item["active"]:
                 return
-            notes = []
-            for step in as_list(action.get("do")):
-                if not isinstance(step, dict):
-                    continue
-                name = str(step.get("action") or step.get("service") or "")
-                if "." not in name:
-                    continue
-                domain, service = name.split(".", 1)
-                try:
-                    await self.call_service(domain, service, step.get("data"), step.get("target"))
-                except HAError as err:
-                    notes.append(f"{name} : {err}")
-            if item["status"] == "sent":
-                await self._clear_devices(item["devices"], item["tag"])
-            item.update(status="handled", active=False, note=f"Action « {action['title']} » exécutée" + (" ; erreurs : " + " ; ".join(notes) if notes else ""))
-            self._save()
-            log.info("Notification %s : action %s", item["id"], action["key"])
+            await self._run_action(item, action)
+
+    async def _run_action(self, item, action, from_ui=False):
+        """Exécute un bouton (verrou pris) : actions `do`, événement éventuel, effacement des téléphones, statut « traitée »."""
+        notes = []
+        for step in as_list(action.get("do")):
+            if not isinstance(step, dict):
+                continue
+            name = str(step.get("action") or step.get("service") or "")
+            if "." not in name:
+                continue
+            domain, service = name.split(".", 1)
+            try:
+                await self.call_service(domain, service, step.get("data"), step.get("target"))
+            except HAError as err:
+                notes.append(f"{name} : {err}")
+        if from_ui and action.get("event"):
+            # un bouton « callback » appuyé depuis l'interface déclenche le même événement que sur le téléphone
+            try:
+                await self.call("fire_event", event_type="mobile_app_notification_action", event_data={"action": action["event"]})
+            except HAError as err:
+                notes.append(f"événement : {err}")
+        if item["status"] == "sent":
+            await self._clear_devices(item["devices"], item["tag"])
+        where = " (depuis l'interface)" if from_ui else ""
+        item.update(status="handled", active=False, note=f"Action « {action['title']} » exécutée{where}" + (" ; erreurs : " + " ; ".join(notes) if notes else ""))
+        self._save()
+        log.info("Notification %s : action %s", item["id"], action["key"])
+
+    async def action_by_id(self, iid, key):
+        async with self.lock:
+            item = next((i for i in self.items if i["id"] == iid), None)
+            action = next((a for a in (item or {}).get("actions", []) if a["key"] == key), None)
+            if not item or not action or not item["active"]:
+                return False
+            await self._run_action(item, action, from_ui=True)
+            return True
 
     async def cancel_by_id(self, iid):
         async with self.lock:
@@ -647,7 +667,7 @@ class Hub:
             out.append({**p, "devices": devices, "nearest": p["id"] in nearest})
         items = [
             {k: i[k] for k in ("id", "title", "message", "tag", "target", "hold", "status", "note", "active", "created", "sent_at", "recipients", "devices", "cancel_when")}
-            | {"actions": [a["title"] for a in i["actions"]]}
+            | {"actions": [{"key": a["key"], "title": a["title"], "uri": a.get("uri")} for a in i["actions"]]}
             for i in reversed(self.items)
         ]
         return {
@@ -721,6 +741,13 @@ async def api_cancel(request):
     return web.json_response({"ok": True})
 
 
+async def api_action(request):
+    ok = await request.app["hub"].action_by_id(request.match_info["nid"], request.match_info["key"])
+    if not ok:
+        return web.json_response({"error": "Notification ou bouton introuvable, ou notification déjà terminée."}, status=404)
+    return web.json_response({"ok": True})
+
+
 async def api_delete(request):
     if not await request.app["hub"].delete_item(request.match_info["nid"]):
         return web.json_response({"error": "Notification introuvable."}, status=404)
@@ -770,6 +797,7 @@ def make_app():
     app.router.add_get(pre + "api/state", api_state)
     app.router.add_post(pre + "api/test", api_test)
     app.router.add_post(pre + "api/cancel/{nid}", api_cancel)
+    app.router.add_post(pre + "api/notification/{nid}/action/{key}", api_action)
     app.router.add_delete(pre + "api/notification/{nid}", api_delete)
     app.router.add_post(pre + "api/clear", api_clear)
     app.router.add_get(pre + "static/{name:.+}", static_file)

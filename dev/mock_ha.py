@@ -83,6 +83,8 @@ async def ws_handler(request):
         elif t == "person/list":
             # David : le 2e téléphone n'est plus listé dans l'attribut d'état (statut « unknown »), mais reste configuré.
             result = {"storage": [{"id": "p_david", "device_trackers": ["device_tracker.phone_a", "device_tracker.phone_b"]}], "config": []}
+        elif t == "fire_event":
+            await broadcast(d["event_type"], d.get("event_data") or {})
         elif t == "call_service":
             CALLS.append({"domain": d["domain"], "service": d["service"], "data": d.get("service_data"), "target": d.get("target")})
         await ws.send_json({"id": d["id"], "type": "result", "success": True, "result": result})
