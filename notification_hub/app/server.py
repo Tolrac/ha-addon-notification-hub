@@ -675,7 +675,8 @@ class Hub:
             devices = await self.devices_of(p["id"])
             out.append({**p, "devices": devices, "nearest": p["id"] in nearest})
         items = [
-            {k: i[k] for k in ("id", "title", "message", "tag", "target", "hold", "status", "note", "active", "created", "sent_at", "recipients", "devices", "cancel_when", "history", "data", "expires")}
+            {k: i[k] for k in ("id", "title", "message", "tag", "target", "hold", "status", "note", "active", "created", "sent_at", "recipients", "devices", "cancel_when")}
+            | {"history": i.get("history", []), "data": i.get("data", {}), "expires": i.get("expires")}
             | {"actions": [{"key": a["key"], "title": a["title"], "uri": a.get("uri")} for a in i["actions"]]}
             for i in reversed(self.items)
         ]
