@@ -81,12 +81,6 @@ triggers:
   - trigger: state
     entity_id: binary_sensor.door_sensor_ouverture
     to: "on"
-conditions:
-  - condition: not
-    conditions:
-      - condition: state
-        entity_id: person.david_gillet
-        state: ["home", "Maison"]
 actions:
   - action: camera.snapshot
     target:
@@ -106,11 +100,15 @@ actions:
         - title: Ouvrir la caméra
           uri: https://exemple.duckdns.org/dashboard-cameras/camera-salon
       cancel_when:
+        - home_occupied: true
         - entity_id: binary_sensor.door_sensor_ouverture
           new_state: "off"
 ```
 
-Le délai laisse au snapshot le temps d'être écrit avant l'envoi de l'image.
+`home_occupied: true` remplace une condition « personne à la maison » écrite à la main : si la maison est déjà
+occupée à l'envoi, la notification est ignorée ; si quelqu'un rentre ensuite, elle est annulée. Les personnes
+sont détectées automatiquement (aucune entité `person` à lister). Le délai laisse au snapshot le temps d'être écrit
+avant l'envoi de l'image.
 
 ### Conditions d'annulation
 
