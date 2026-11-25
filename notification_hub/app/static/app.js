@@ -136,7 +136,7 @@ function renderNotifs() {
       ${n.note ? `<div class="note">${esc(n.note)}</div>` : ""}
       <div class="notif-meta">${meta.map((m) => `<span>${esc(m)}</span>`).join("")}</div>
       ${buttons}
-      <div class="card-foot"><button class="btn-ghost" data-detail="${esc(n.id)}" type="button">${S.open.has(n.id) ? "▲ Masquer les détails" : "▼ Détails"}</button></div>
+      <div class="card-foot"><button class="btn-blue" data-detail="${esc(n.id)}" type="button">${S.open.has(n.id) ? "▲ Masquer les détails" : "▼ Détails"}</button></div>
       ${S.open.has(n.id) ? detailsHtml(n) : ""}
       ${S.ai ? `<div class="card-foot"><button class="btn-ghost" data-auto="${esc(n.id)}" type="button">✨ Automatiser</button></div>` : ""}
     </div>`;

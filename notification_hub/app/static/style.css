@@ -135,3 +135,5 @@ pre.code { margin: 0; padding: 12px 14px; background: var(--soft); border: 1px s
 .timeline li { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
 .timeline .h-time { color: var(--muted); min-width: 110px; }
 .timeline .h-note { color: var(--ink); }
+.btn-blue { background: var(--accent); border: 1px solid var(--accent); border-radius: 20px; padding: 6px 14px; color: #fff; font-size: 13px; font-weight: 500; cursor: pointer; }
+.btn-blue:hover { filter: brightness(1.1); }
