@@ -448,7 +448,16 @@ class Hub:
             "sent_at": None,
             "recipients": [],
             "devices": [],
+            "history": [{"t": now, "status": "held", "note": "Événement reçu"}],
         }
+
+    def _set(self, item, **kw):
+        """Met à jour une notification et ajoute une ligne à son historique (affiché dans « Détails »)."""
+        item.update(**kw)
+        note = item.get("note") or ""
+        if item["status"] == "sent" and item["devices"]:
+            note = ("Envoyée à : " + ", ".join(item["devices"])) + (" — " + note if note else "")
+        item.setdefault("history", []).append({"t": time.time(), "status": item["status"], "note": note})
 
     def _payload(self, item):
         data = dict(item["data"])
@@ -477,7 +486,7 @@ class Hub:
             if item["hold"]:
                 item["status"], item["note"] = "held", "En attente : personne à notifier n'est à la maison"
             else:
-                item.update(status="ignored", active=False, note="Aucun destinataire pour cette cible")
+                self._set(item, status="ignored", active=False, note="Aucun destinataire pour cette cible")
             return
         devices = []
         for pid in ids:
@@ -487,7 +496,7 @@ class Hub:
         names = {p["id"]: p["name"] for p in self.people()}
         item["recipients"] = [names.get(pid, pid) for pid in ids]
         if not devices:
-            item.update(status="failed", active=False, note="Aucun appareil mobile trouvé pour : " + ", ".join(item["recipients"]))
+            self._set(item, status="failed", active=False, note="Aucun appareil mobile trouvé pour : " + ", ".join(item["recipients"]))
             return
         payload, ok, errors = self._payload(item), [], []
         for svc in devices:
@@ -498,11 +507,11 @@ class Hub:
                 errors.append(f"{svc} : {err}")
         item["devices"] = ok
         if ok:
-            item.update(status="sent", sent_at=time.time(), note="")
+            self._set(item, status="sent", sent_at=time.time(), note="")
             if errors:
                 item["note"] = "Échec partiel : " + " ; ".join(errors)
         else:
-            item.update(status="failed", active=False, note="Envoi impossible : " + " ; ".join(errors))
+            self._set(item, status="failed", active=False, note="Envoi impossible : " + " ; ".join(errors))
 
     async def _clear_devices(self, devices, tag):
         for svc in devices:
@@ -514,7 +523,7 @@ class Hub:
     async def _cancel(self, item, note, status):
         if item["status"] == "sent":
             await self._clear_devices(item["devices"], item["tag"])
-        item.update(status=status, note=note, active=False)
+        self._set(item, status=status, note=note, active=False)
         self._save()
         log.info("Notification %s (%s) : %s", item["id"], item["tag"], note)
 
@@ -525,7 +534,7 @@ class Hub:
         async with self.lock:
             item = self._build(data)
             if any(self.cond_true(c) for c in item["cancel_when"]):
-                item.update(status="ignored", active=False, note="Condition d'annulation déjà remplie")
+                self._set(item, status="ignored", active=False, note="Condition d'annulation déjà remplie")
             else:
                 await self._deliver(item)
             # une notification plus récente avec le même tag remplace l'ancienne
@@ -533,7 +542,7 @@ class Hub:
                 if old["active"] and old["tag"] == item["tag"]:
                     stale = [d for d in old["devices"] if d not in item["devices"]] if old["status"] == "sent" else []
                     await self._clear_devices(stale, old["tag"])
-                    old.update(status="replaced", active=False, note="Remplacée par une notification plus récente")
+                    self._set(old, status="replaced", active=False, note="Remplacée par une notification plus récente")
             self.items.append(item)
             self._save()
             log.info("Notification %s (%s) : %s", item["id"], item["tag"], item["status"])
@@ -556,7 +565,7 @@ class Hub:
             for item in self.items:
                 if item["active"] and now > item["expires"]:
                     if item["status"] == "held":
-                        item.update(status="expired", active=False, note="Expirée avant la fin de l'attente")
+                        self._set(item, status="expired", active=False, note="Expirée avant la fin de l'attente")
                     else:
                         item["active"] = False
                     changed = True
@@ -611,7 +620,7 @@ class Hub:
         if item["status"] == "sent":
             await self._clear_devices(item["devices"], item["tag"])
         where = " (depuis l'interface)" if from_ui else ""
-        item.update(status="handled", active=False, note=f"Action « {action['title']} » exécutée{where}" + (" ; erreurs : " + " ; ".join(notes) if notes else ""))
+        self._set(item, status="handled", active=False, note=f"Action « {action['title']} » exécutée{where}" + (" ; erreurs : " + " ; ".join(notes) if notes else ""))
         self._save()
         log.info("Notification %s : action %s", item["id"], action["key"])
 
@@ -666,7 +675,7 @@ class Hub:
             devices = await self.devices_of(p["id"])
             out.append({**p, "devices": devices, "nearest": p["id"] in nearest})
         items = [
-            {k: i[k] for k in ("id", "title", "message", "tag", "target", "hold", "status", "note", "active", "created", "sent_at", "recipients", "devices", "cancel_when")}
+            {k: i[k] for k in ("id", "title", "message", "tag", "target", "hold", "status", "note", "active", "created", "sent_at", "recipients", "devices", "cancel_when", "history", "data", "expires")}
             | {"actions": [{"key": a["key"], "title": a["title"], "uri": a.get("uri")} for a in i["actions"]]}
             for i in reversed(self.items)
         ]

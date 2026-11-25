@@ -126,3 +126,14 @@ pre.code { margin: 0; padding: 12px 14px; background: var(--soft); border: 1px s
 .drawer-title span { font-size: 12px; }
 .drawer iframe { flex: 1; width: 100%; border: 0; background: var(--bg); }
 .fab-container.shifted { right: calc(min(560px, 100%) + 24px); }
+
+.btn-link { background: none; border: 0; padding: 2px 0; color: var(--accent); font-size: 12px; cursor: pointer; }
+.btn-link:hover { text-decoration: underline; }
+.details { margin-top: 8px; padding-top: 10px; border-top: 1px solid var(--line); font-size: 12px; }
+.details dl { display: grid; grid-template-columns: max-content 1fr; gap: 4px 12px; margin: 0 0 10px; }
+.details dt { color: var(--muted); }
+.details dd { margin: 0; word-break: break-word; }
+.timeline { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+.timeline li { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.timeline .h-time { color: var(--muted); min-width: 110px; }
+.timeline .h-note { color: var(--ink); }

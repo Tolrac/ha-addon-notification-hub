@@ -181,6 +181,15 @@ def main():
         n = notifs()[0]
         http(f"{HUB}/api/notification/{n['id']}/action/{n['actions'][0]['key']}", {}); time.sleep(0.6)
         check("bouton événement : traitée", notifs()[0]["status"] == "handled", (notifs()[0]["status"], n["actions"]))
+
+        print("11. Détails : historique d'une notification")
+        http(HUB + "/api/clear", {"scope": "all"}); reset()
+        send(title="Hist", message="m", target="all", tag="h1", data={"image": "/x.png"})
+        n = notifs()[0]
+        http(f"{HUB}/api/cancel/{n['id']}", {}); time.sleep(0.5)
+        n = notifs()[0]
+        check("historique : reçue, envoyée, annulée", [h["status"] for h in n["history"]] == ["held", "sent", "cancelled"], n["history"])
+        check("données et expiration exposées", n["data"].get("image") == "/x.png" and n["expires"] > 0)
     finally:
         for p in procs:
             p.terminate()

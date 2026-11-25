@@ -2,7 +2,7 @@
 const $ = (s) => document.querySelector(s);
 const esc = (t) => String(t ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 
-const S = { data: null, error: null, ai: null };
+const S = { data: null, error: null, ai: null, open: new Set() };
 
 const STATUS = {
   sent: "Envoyée", held: "En attente", replaced: "Remplacée", cancelled: "Annulée",
@@ -73,6 +73,32 @@ function renderPeople() {
   }).join("");
 }
 
+function fmtFull(ts) {
+  return ts ? new Date(ts * 1000).toLocaleString("fr-FR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit", second: "2-digit" }) : "";
+}
+
+function condLabel(c) {
+  if ("home_occupied" in c) return c.home_occupied ? "maison occupée" : "maison vide";
+  const key = ["state", "not_state", "above", "below"].find((k) => k in c);
+  return `${c.entity_id}${c.attribute ? "." + c.attribute : ""} ${key ? key.replace("_", " ") + " " + [].concat(c[key]).join(" ou ") : ""}`;
+}
+
+function detailsHtml(n) {
+  const rows = [];
+  if (n.recipients.length) rows.push(["Destinataires", n.recipients.join(", ")]);
+  if (n.devices.length) rows.push(["Appareils", n.devices.join(", ")]);
+  rows.push(["Cible", targetLabel(n.target)]);
+  if (n.expires) rows.push(["Suivie jusqu'à", fmtFull(n.expires)]);
+  if (n.cancel_when.length) rows.push(["Annulée si", n.cancel_when.map(condLabel).join(" ; ")]);
+  if (Object.keys(n.data || {}).length) rows.push(["Données", JSON.stringify(n.data)]);
+  const hist = (n.history || []).map((h) =>
+    `<li><span class="h-time">${esc(fmtFull(h.t))}</span><span class="badge ${esc(h.status)}">${esc(STATUS[h.status] || h.status)}</span>${h.note ? `<span class="h-note">${esc(h.note)}</span>` : ""}</li>`).join("");
+  return `<div class="details">
+    <dl>${rows.map(([k, v]) => `<dt>${esc(k)}</dt><dd>${esc(v)}</dd>`).join("")}</dl>
+    ${hist ? `<ul class="timeline">${hist}</ul>` : ""}
+  </div>`;
+}
+
 function renderNotifs() {
   const d = S.data;
   const box = $("#notifs");
@@ -110,6 +136,8 @@ function renderNotifs() {
       ${n.note ? `<div class="note">${esc(n.note)}</div>` : ""}
       <div class="notif-meta">${meta.map((m) => `<span>${esc(m)}</span>`).join("")}</div>
       ${buttons}
+      <div class="card-foot"><button class="btn-link" data-detail="${esc(n.id)}" type="button">${S.open.has(n.id) ? "Masquer les détails" : "Détails"}</button></div>
+      ${S.open.has(n.id) ? detailsHtml(n) : ""}
       ${S.ai ? `<div class="card-foot"><button class="btn-ghost" data-auto="${esc(n.id)}" type="button">✨ Automatiser</button></div>` : ""}
     </div>`;
   }).join("");
@@ -140,6 +168,13 @@ $("#notifs").addEventListener("click", async (e) => {
   if (auto) {
     const n = (S.data?.notifications || []).find((x) => x.id === auto.dataset.auto);
     if (n) openAI(promptFor(n));
+    return;
+  }
+  const det = e.target.closest("[data-detail]");
+  if (det) {
+    const id = det.dataset.detail;
+    if (S.open.has(id)) S.open.delete(id); else S.open.add(id);
+    renderNotifs();
     return;
   }
   const uri = e.target.closest("[data-uri]");

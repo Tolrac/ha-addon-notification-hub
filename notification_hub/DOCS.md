@@ -185,7 +185,8 @@ Le lien **Notifications** de la barre latérale affiche les personnes (présence
 notifications récentes avec leur statut (envoyée, en attente, remplacée, annulée, traitée, ignorée, expirée,
 échec) et permet d'annuler une notification ou d'envoyer un test. Les boutons d'une notification active sont
 cliquables sur sa carte : un bouton `do` ou événement exécute l'action (comme sur le téléphone, avec effacement partout), un
-bouton `uri` ouvre le lien dans un nouvel onglet. Le menu ⋮ propose des exemples d'automatisations.
+bouton `uri` ouvre le lien dans un nouvel onglet. Le lien **Détails** d'une carte affiche les destinataires, les
+appareils, les conditions d'annulation, les données envoyées et l'historique daté (reçue, envoyée, remplacée, annulée…). Le menu ⋮ propose des exemples d'automatisations.
 
 ## Effacer des notifications
 
