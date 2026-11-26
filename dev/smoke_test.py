@@ -34,6 +34,16 @@ def http_status(url):
         return err.code
 
 
+def http_post_status(url, data):
+    req = urllib.request.Request(url, data=json.dumps(data).encode(), method="POST")
+    req.add_header("Content-Type", "application/json")
+    try:
+        with urllib.request.urlopen(req, timeout=10) as r:
+            return r.status
+    except urllib.error.HTTPError as err:
+        return err.code
+
+
 def state(eid, st, attrs=None):
     http(MOCK + "/_mock/state", {"entity_id": eid, "state": st, "attributes": attrs or {}})
     time.sleep(0.4)
@@ -190,6 +200,34 @@ def main():
         n = notifs()[0]
         check("historique : reçue, envoyée, annulée", [h["status"] for h in n["history"]] == ["held", "sent", "cancelled"], n["history"])
         check("données et expiration exposées", n["data"].get("image") == "/x.png" and n["expires"] > 0)
+
+        print("12. Réglages : valeurs par défaut modifiables depuis l'interface")
+        http(HUB + "/api/clear", {"scope": "all"}); reset()
+        st = http(HUB + "/api/settings")
+        check("réglages lisibles (cible présents, attente désactivée)", st["settings"]["target"] == "present" and st["settings"]["hold_until_home"] is False and st["customized"] is False, st["settings"])
+        check("zones et personnes proposées", any(z["id"] == "zone.maison" for z in st["zones"]) or st["zones"] == [], st["zones"])
+        state("person.david", "not_home", {"latitude": 50.9, "longitude": 4.9}); state("person.julie", "not_home", {"latitude": 50.95, "longitude": 4.95})
+        send(title="D1", message="m", tag="s1")
+        check("sans réglage : personne à la maison, notification ignorée", notifs()[0]["status"] == "ignored", notifs()[0]["status"])
+        http(HUB + "/api/settings", {"hold_until_home": True}); reset(); state("person.david", "not_home", {"latitude": 50.9, "longitude": 4.9}); state("person.julie", "not_home", {"latitude": 50.95, "longitude": 4.95})
+        send(title="D2", message="m", tag="s2")
+        check("attente par défaut : en attente", notifs()[0]["status"] == "held", notifs()[0]["status"])
+        send(title="D3", message="m", tag="s3", hold_until_home=False, target="nearest")
+        check("l'automatisation reste prioritaire (cible et attente fournies)", notifs()[0]["status"] == "sent", notifs()[0]["status"])
+        http(HUB + "/api/settings", {"target": "all", "hold_until_home": False}); reset(); state("person.david", "not_home", {"latitude": 50.9, "longitude": 4.9})
+        send(title="D4", message="m", tag="s4")
+        check("cible par défaut « tous »", notifs()[0]["status"] == "sent" and len(notifs()[0]["recipients"]) >= 2, notifs()[0]["recipients"])
+        http(HUB + "/api/settings", {"cancel_default": "occupied"}); reset()
+        send(title="D5", message="m", tag="s5")
+        check("annulation par défaut « maison occupée » : ignorée si occupée", notifs()[0]["status"] == "ignored", notifs()[0]["status"])
+        check("réglage personnalisé signalé", http(HUB + "/api/settings")["customized"] is True)
+        bad = http_post_status(HUB + "/api/settings", {"ttl_hours": 0})
+        check("valeur invalide refusée (400)", bad == 400, bad)
+        http(HUB + "/api/settings", {"proximity_threshold": 500, "ttl_hours": 2, "extra_home_zones": ["zone.maison"]})
+        st = http(HUB + "/api/settings")["settings"]
+        check("seuil, durée et zones enregistrés", st["proximity_threshold"] == 500 and st["ttl_hours"] == 2 and st["extra_home_zones"] == ["zone.maison"], st)
+        st = http(HUB + "/api/settings/reset", {})
+        check("réinitialisation : valeurs de l'application", st["settings"]["target"] == "present" and st["settings"]["cancel_default"] == "none" and st["customized"] is False, st["settings"])
     finally:
         for p in procs:
             p.terminate()

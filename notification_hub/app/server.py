@@ -30,10 +30,24 @@ TOKEN = os.environ.get("SUPERVISOR_TOKEN", "")
 WS_URL = os.environ.get("HA_WS_URL", "ws://supervisor/core/websocket")
 ALLOWED_PEERS = {"172.30.32.2", "127.0.0.1", "::1"}
 
-THRESHOLD = float(OPTIONS.get("proximity_threshold", 200))
-EXTRA_ZONES = [z.strip() for z in OPTIONS.get("extra_home_zones") or [] if z and z.strip()]
-OCCUPANCY_ENTITY = (OPTIONS.get("occupancy_entity") or "").strip()
-TTL_SECONDS = float(OPTIONS.get("ttl_hours", 24)) * 3600
+SETTINGS_FILE = DATA_DIR / "settings.json"
+CANCEL_DEFAULTS = ("none", "occupied", "empty")
+
+# Valeurs de départ : les options de l'application ; les réglages enregistrés depuis l'interface les remplacent.
+BASE_SETTINGS = {
+    "target": "present",
+    "hold_until_home": False,
+    "ttl_hours": float(OPTIONS.get("ttl_hours", 24)),
+    "proximity_threshold": float(OPTIONS.get("proximity_threshold", 200)),
+    "extra_home_zones": [z.strip() for z in OPTIONS.get("extra_home_zones") or [] if z and z.strip()],
+    "occupancy_entity": (OPTIONS.get("occupancy_entity") or "").strip(),
+    "cancel_default": "none",
+}
+CFG = dict(BASE_SETTINGS)
+THRESHOLD = CFG["proximity_threshold"]
+EXTRA_ZONES = CFG["extra_home_zones"]
+OCCUPANCY_ENTITY = CFG["occupancy_entity"]
+TTL_SECONDS = CFG["ttl_hours"] * 3600
 OVERRIDES = {
     (o.get("person") or "").strip(): [s.strip().removeprefix("notify.") for s in (o.get("notify") or "").split(",") if s.strip()]
     for o in OPTIONS.get("people_overrides") or []
@@ -109,6 +123,59 @@ def apply_compat(d):
     return d
 
 
+def clean_settings(raw):
+    """Valide les réglages envoyés par l'interface (lève ValueError si un champ est invalide)."""
+    out = {}
+    if "target" in raw:
+        t = [str(x).strip() for x in as_list(raw["target"]) if str(x).strip()]
+        if not t:
+            raise ValueError("cible vide")
+        out["target"] = t[0] if len(t) == 1 else t
+    if "hold_until_home" in raw:
+        out["hold_until_home"] = bool(raw["hold_until_home"])
+    if "ttl_hours" in raw:
+        v = float(raw["ttl_hours"])
+        if not 0.1 <= v <= 720:
+            raise ValueError("la durée de suivi doit être comprise entre 0,1 h et 720 h")
+        out["ttl_hours"] = v
+    if "proximity_threshold" in raw:
+        v = float(raw["proximity_threshold"])
+        if not 0 <= v <= 100000:
+            raise ValueError("le seuil de proximité doit être compris entre 0 et 100 000 m")
+        out["proximity_threshold"] = v
+    if "extra_home_zones" in raw:
+        zones = [str(z).strip() for z in as_list(raw["extra_home_zones"]) if str(z).strip()]
+        if any(not z.startswith("zone.") for z in zones):
+            raise ValueError("une zone doit commencer par « zone. »")
+        out["extra_home_zones"] = zones
+    if "occupancy_entity" in raw:
+        e = str(raw["occupancy_entity"] or "").strip()
+        if e and "." not in e:
+            raise ValueError("identifiant d'entité invalide")
+        out["occupancy_entity"] = e
+    if "cancel_default" in raw:
+        if raw["cancel_default"] not in CANCEL_DEFAULTS:
+            raise ValueError("annulation par défaut invalide")
+        out["cancel_default"] = raw["cancel_default"]
+    return out
+
+
+def apply_settings(cfg):
+    global CFG, THRESHOLD, EXTRA_ZONES, OCCUPANCY_ENTITY, TTL_SECONDS
+    CFG = {**BASE_SETTINGS, **cfg}
+    THRESHOLD = float(CFG["proximity_threshold"])
+    EXTRA_ZONES = list(CFG["extra_home_zones"])
+    OCCUPANCY_ENTITY = CFG["occupancy_entity"]
+    TTL_SECONDS = float(CFG["ttl_hours"]) * 3600
+
+
+def load_settings():
+    try:
+        apply_settings(clean_settings(json.loads(SETTINGS_FILE.read_text())))
+    except Exception:
+        apply_settings({})
+
+
 class HAError(Exception):
     pass
 
@@ -126,6 +193,7 @@ class Hub:
         self.items = []
         self.lock = asyncio.Lock()
         self._load()
+        load_settings()
 
     # ---- persistance
     def _load(self):
@@ -426,6 +494,8 @@ class Hub:
             key = slugify(str(a.get("key") or a.get("id") or a.get("event") or a["title"])) or f"a{len(actions) + 1}"
             actions.append({"key": key, "title": str(a["title"]), "do": a.get("do"), "uri": a.get("uri"), "event": a.get("event")})
         cancel = [c for c in as_list(data.get("cancel_when")) if isinstance(c, dict) and ("entity_id" in c or "home_occupied" in c)]
+        if "cancel_when" not in data and CFG["cancel_default"] != "none":
+            cancel = [{"home_occupied": CFG["cancel_default"] == "occupied"}]
         ttl = data.get("ttl_minutes")
         life = float(ttl) * 60 if isinstance(ttl, (int, float)) and ttl > 0 else TTL_SECONDS
         now = time.time()
@@ -434,8 +504,8 @@ class Hub:
             "title": str(data.get("title") or "Home Assistant"),
             "message": str(data.get("message") or ""),
             "tag": str(data.get("tag") or f"nh_{iid}"),
-            "target": as_list(data.get("target")) or ["present"],
-            "hold": bool(data.get("hold_until_home")),
+            "target": as_list(data.get("target")) or as_list(CFG["target"]) or ["present"],
+            "hold": bool(data["hold_until_home"]) if "hold_until_home" in data else bool(CFG["hold_until_home"]),
             "fallback": data.get("fallback"),
             "data": data.get("data") if isinstance(data.get("data"), dict) else {},
             "actions": actions,
@@ -666,6 +736,29 @@ class Hub:
             self._save()
             return removed
 
+    # ---- réglages
+    def settings_view(self):
+        zones = [{"id": e, "name": (st.get("attributes") or {}).get("friendly_name") or e} for e, st in sorted(self.states.items()) if e.startswith("zone.") and e != "zone.home"]
+        sensors = [e for e in sorted(self.states) if e.startswith(("binary_sensor.", "input_boolean."))]
+        people = [{"id": p["id"], "name": p["name"]} for p in self.people()]
+        return {"settings": CFG, "defaults": BASE_SETTINGS, "zones": zones, "sensors": sensors, "people": people,
+                "customized": SETTINGS_FILE.exists()}
+
+    async def save_settings(self, raw):
+        cfg = {**CFG, **clean_settings(raw)}
+        DATA_DIR.mkdir(parents=True, exist_ok=True)
+        SETTINGS_FILE.write_text(json.dumps(cfg, ensure_ascii=False, indent=1))
+        apply_settings(cfg)
+        await self.release_held()
+        await self.check_cancellations()
+        log.info("Réglages enregistrés : %s", cfg)
+
+    async def reset_settings(self):
+        SETTINGS_FILE.unlink(missing_ok=True)
+        apply_settings({})
+        await self.release_held()
+        await self.check_cancellations()
+
     # ---- vue pour l'interface
     async def view(self):
         people = self.people()
@@ -744,6 +837,22 @@ async def api_test(request):
     return web.json_response({"id": item["id"], "status": item["status"], "note": item["note"], "recipients": item["recipients"]})
 
 
+async def api_settings(request):
+    return web.json_response(request.app["hub"].settings_view())
+
+
+async def api_settings_save(request):
+    hub = request.app["hub"]
+    await hub.save_settings(await request.json())
+    return web.json_response(hub.settings_view())
+
+
+async def api_settings_reset(request):
+    hub = request.app["hub"]
+    await hub.reset_settings()
+    return web.json_response(hub.settings_view())
+
+
 async def api_cancel(request):
     ok = await request.app["hub"].cancel_by_id(request.match_info["nid"])
     if not ok:
@@ -806,6 +915,9 @@ def make_app():
     app.router.add_get(pre + "app", index)
     app.router.add_get(pre + "api/state", api_state)
     app.router.add_post(pre + "api/test", api_test)
+    app.router.add_get(pre + "api/settings", api_settings)
+    app.router.add_post(pre + "api/settings", api_settings_save)
+    app.router.add_post(pre + "api/settings/reset", api_settings_reset)
     app.router.add_post(pre + "api/cancel/{nid}", api_cancel)
     app.router.add_post(pre + "api/notification/{nid}/action/{key}", api_action)
     app.router.add_delete(pre + "api/notification/{nid}", api_delete)

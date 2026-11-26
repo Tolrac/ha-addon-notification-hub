@@ -138,7 +138,6 @@ function renderNotifs() {
       ${buttons}
       <div class="card-foot"><button class="btn-blue" data-detail="${esc(n.id)}" type="button">${S.open.has(n.id) ? "▲ Masquer les détails" : "▼ Détails"}</button></div>
       ${S.open.has(n.id) ? detailsHtml(n) : ""}
-      ${S.ai ? `<div class="card-foot"><button class="btn-ghost" data-auto="${esc(n.id)}" type="button">✨ Automatiser</button></div>` : ""}
     </div>`;
   }).join("");
 }
@@ -164,12 +163,6 @@ async function refresh() {
 }
 
 $("#notifs").addEventListener("click", async (e) => {
-  const auto = e.target.closest("[data-auto]");
-  if (auto) {
-    const n = (S.data?.notifications || []).find((x) => x.id === auto.dataset.auto);
-    if (n) openAI(promptFor(n));
-    return;
-  }
   const det = e.target.closest("[data-detail]");
   if (det) {
     const id = det.dataset.detail;
@@ -255,12 +248,6 @@ async function detectAI() {
   if (changed) renderNotifs();
 }
 
-function promptFor(n) {
-  const dest = n.target && n.target.length ? `, destinataires : ${targetLabel(n.target)}` : "";
-  const hold = n.hold ? ", gardée en attente jusqu'au retour d'un destinataire" : "";
-  return `Crée une automatisation qui envoie la notification « ${n.title} » (message : « ${n.message} »${dest}${hold}, tag : ${n.tag}) quand `;
-}
-
 async function openAI(prompt = "") {
   if (!S.ai) return;
   try {
@@ -295,7 +282,72 @@ function openDialog(html) {
 }
 function closeDialog() { $("#dialog").classList.add("hidden"); $("#dialog").innerHTML = ""; }
 
-function openTest() {
+/* Réglages : valeurs par défaut (à qui, quand, combien de temps, présence, proximité, annulation) */
+async function openSettings() {
+  let r;
+  try { r = await api("api/settings"); } catch (err) { toast(err.message, true); return; }
+  const c = r.settings;
+  const t = Array.isArray(c.target) ? c.target[0] : c.target;
+  const opt = (v, label, cur) => `<option value="${esc(v)}" ${v === cur ? "selected" : ""}>${esc(label)}</option>`;
+  const targets = [["present", "Personnes à la maison"], ["nearest", "Personnes les plus proches de la maison"], ["all", "Toutes les personnes"], ...r.people.map((p) => [p.id, p.name])];
+  const zones = r.zones.length
+    ? r.zones.map((z) => `<label class="check"><input type="checkbox" data-zone="${esc(z.id)}" ${c.extra_home_zones.includes(z.id) ? "checked" : ""}> ${esc(z.name)} <span class="muted">(${esc(z.id)})</span></label>`).join("")
+    : '<div class="muted">Aucune autre zone dans Home Assistant.</div>';
+  openDialog(`<h3>Réglages</h3>
+    <div class="muted">Valeurs utilisées quand une automatisation ne précise pas le champ. Ce qu'elle envoie reste prioritaire.</div>
+    <h4>À qui</h4>
+    <label>Destinataires par défaut<select id="s-target">${targets.map(([v, l]) => opt(v, l, t)).join("")}</select></label>
+    <h4>Quand</h4>
+    <label class="check"><input id="s-hold" type="checkbox" ${c.hold_until_home ? "checked" : ""}> Garder en attente jusqu'au retour d'un destinataire</label>
+    <h4>Combien de temps</h4>
+    <label>Durée de suivi (heures)<input id="s-ttl" type="number" min="0.1" max="720" step="0.5" value="${esc(c.ttl_hours)}"></label>
+    <div class="muted">Passé ce délai, une notification en attente expire et ses conditions d'annulation ne sont plus surveillées.</div>
+    <h4>Présence</h4>
+    <div class="muted">Une personne dans la zone « Maison » est toujours à la maison. Zones à compter aussi comme la maison :</div>
+    ${zones}
+    <label>Capteur d'occupation (facultatif)<input id="s-occ" type="text" list="s-sensors" value="${esc(c.occupancy_entity)}" placeholder="binary_sensor.maison_occupee"></label>
+    <datalist id="s-sensors">${r.sensors.map((e) => `<option value="${esc(e)}"></option>`).join("")}</datalist>
+    <div class="muted">Vide : la maison est occupée dès qu'une personne est présente.</div>
+    <h4>Proximité</h4>
+    <label>Seuil de proximité (mètres)<input id="s-th" type="number" min="0" max="100000" step="50" value="${esc(c.proximity_threshold)}"></label>
+    <div class="muted">Écart toléré derrière la personne la plus proche pour la cible « plus proches ».</div>
+    <h4>Annulation</h4>
+    <label>Annulation par défaut<select id="s-cancel">
+      ${opt("none", "Aucune", c.cancel_default)}${opt("occupied", "Quand la maison est occupée", c.cancel_default)}${opt("empty", "Quand la maison est vide", c.cancel_default)}
+    </select></label>
+    <div class="actions">
+      ${r.customized ? `<button class="btn-ghost" id="s-reset" type="button">Valeurs de l'application</button>` : ""}
+      <button class="btn-ghost" id="s-close" type="button">Fermer</button><button class="btn-primary" id="s-save" type="button">Enregistrer</button>
+    </div>`);
+  $("#s-close").onclick = closeDialog;
+  if ($("#s-reset")) $("#s-reset").onclick = async () => {
+    try { await api("api/settings/reset", { method: "POST", body: "{}" }); closeDialog(); toast("Valeurs de l'application rétablies"); } catch (err) { toast(err.message, true); }
+    refresh();
+  };
+  $("#s-save").onclick = async () => {
+    const btn = $("#s-save");
+    btn.disabled = true;
+    try {
+      await api("api/settings", { method: "POST", body: JSON.stringify({
+        target: $("#s-target").value,
+        hold_until_home: $("#s-hold").checked,
+        ttl_hours: Number($("#s-ttl").value),
+        extra_home_zones: [...document.querySelectorAll("[data-zone]")].filter((x) => x.checked).map((x) => x.dataset.zone),
+        occupancy_entity: $("#s-occ").value.trim(),
+        proximity_threshold: Number($("#s-th").value),
+        cancel_default: $("#s-cancel").value,
+      }) });
+      closeDialog();
+      toast("Réglages enregistrés");
+    } catch (err) { toast(err.message, true); btn.disabled = false; }
+    refresh();
+  };
+}
+
+async function openTest() {
+  let def = {};
+  try { def = (await api("api/settings")).settings; } catch (_) { /* valeurs par défaut de l'interface */ }
+  const defTarget = Array.isArray(def.target) ? def.target[0] : def.target || "present";
   const people = (S.data?.people || []).map((p) => `<option value="${esc(p.id)}">${esc(p.name)}</option>`).join("");
   openDialog(`<h3>Envoyer une notification de test</h3>
     <div class="muted">Elle suit les mêmes règles qu'une vraie notification.</div>
@@ -308,8 +360,9 @@ function openTest() {
         <option value="all">Toutes les personnes</option>
         ${people}
       </select></label>
-    <label class="check"><input id="t-hold" type="checkbox"> Garder en attente jusqu'au retour d'un destinataire</label>
+    <label class="check"><input id="t-hold" type="checkbox" ${def.hold_until_home ? "checked" : ""}> Garder en attente jusqu'au retour d'un destinataire</label>
     <div class="actions"><button class="btn-ghost" id="t-cancel" type="button">Fermer</button><button class="btn-primary" id="t-send" type="button">Envoyer</button></div>`);
+  $("#t-target").value = defTarget;
   $("#t-cancel").onclick = closeDialog;
   $("#t-send").onclick = async () => {
     const btn = $("#t-send");
@@ -400,6 +453,7 @@ function showMenu(anchor) {
   m.innerHTML = '<button data-act="test" type="button">Envoyer un test</button>'
     + (S.ai ? '<button data-act="ai" type="button">Créer l\'automatisation (IA)</button>' : "")
     + '<button data-act="examples" type="button">Exemples d\'automatisations</button>'
+    + '<button data-act="settings" type="button">Réglages</button>'
     + '<button data-act="clear-finished" type="button">Effacer l\'historique</button>'
     + '<button data-act="clear-all" type="button">Tout effacer…</button>'
     + '<button data-act="refresh" type="button">Actualiser</button>';
@@ -412,6 +466,7 @@ function showMenu(anchor) {
     m.classList.add("hidden");
     if (act === "test") openTest();
     else if (act === "examples") openExamples();
+    else if (act === "settings") openSettings();
     else if (act === "ai") openAI("Crée une automatisation qui m'envoie une notification quand ");
     else if (act === "clear-finished") clearHistory("finished");
     else if (act === "clear-all") confirmClearAll();

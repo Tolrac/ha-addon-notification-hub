@@ -179,6 +179,23 @@ le bas) ; l'historique de
 l'application compagnon (Paramètres → Companion app → Notifications → Historique) montre les données reçues,
 dont `actions`.
 
+## Réglages (menu ⋮ → Réglages)
+
+Valeurs utilisées quand une automatisation **ne précise pas** le champ (ce qu'elle envoie reste prioritaire) :
+
+| Réglage | Effet |
+|---|---|
+| À qui | Destinataires par défaut : présents, plus proches, tous ou une personne (champ `target`). |
+| Quand | Garder en attente jusqu'au retour d'un destinataire par défaut (champ `hold_until_home`). |
+| Combien de temps | Durée de suivi en heures (expiration des notifications en attente, surveillance des annulations). |
+| Présence | Zones comptées comme « maison » en plus de `zone.home`, et capteur d'occupation facultatif. |
+| Proximité | Seuil en mètres pour la cible « plus proches ». |
+| Annulation | Annulation par défaut si l'automatisation n'a pas de `cancel_when` : jamais, quand la maison est occupée, ou quand elle est vide. |
+
+Les réglages sont enregistrés par l'application et remplacent les options de l'onglet Configuration. Le bouton « Valeurs de
+l'application » les efface pour revenir à ces options. La fenêtre « Envoyer un test » reprend la cible et l'attente par
+défaut.
+
 ## Interface
 
 Le lien **Notifications** de la barre latérale affiche les personnes (présence, distance, téléphones), les
@@ -197,11 +214,10 @@ appareils, les conditions d'annulation, les données envoyées et l'historique d
 
 ## Créer l'automatisation avec l'IA
 
-Si l'application **Automations IA** est installée et démarrée, le bouton **✨ Créer l'automatisation (IA)** (et
-**✨ Automatiser** sur chaque notification) ouvre un panneau latéral qui affiche son interface. Décris quand envoyer la
-notification : l'IA écrit l'automatisation avec l'événement `notification_hub_send`, tu la vérifies (résumé, canevas,
-étapes, YAML) puis tu l'ajoutes. Sur une carte, la phrase est pré-remplie avec le titre, le message, les destinataires
-et le tag. Sans Automations IA, le bouton n'apparaît pas.
+Si l'application **Automations IA** est installée et démarrée, le bouton **✨ Créer l'automatisation (IA)** (en haut
+de la colonne Notifications, et dans le menu ⋮) ouvre un panneau latéral qui affiche son interface. Décris quand envoyer
+la notification : l'IA écrit l'automatisation avec l'événement `notification_hub_send`, tu la vérifies (résumé, canevas,
+étapes, YAML) puis tu l'ajoutes. Sans Automations IA, le bouton n'apparaît pas.
 
 ## Confidentialité
 
